@@ -1,0 +1,39 @@
+*.plotting.R files contain the (deprecated / temporary /development)
+plotting routines; for the final plotting routines see folder "plot scripts"
+########################################################
+
+
+##############
+RSA_listener_E10.*
+RSA-style R2, tries to match aggregate data from Exp 10
+
+##############
+RSA_speaker_E10.*
+RSA-style R2, tries to match aggregate data from Exp 10
+
+############## 
+RSA_listener_mixed_E10.*
+3 listener types:
+
+  R0(t,m ; lambda) \propto \expo(\lambda U(t | [[m]])
+  R0(t,m) = lim_{lambda -> infty} R0(t,m ; lambda) 
+        [same for all other types -> no lambda -> fully rational type]
+
+  R1(t,m ; lambda) \propto \expo(\lambda \mu(t | m))
+    where: \mu(t | m) \propto Uniform(t) S0(t,m)
+		    [or 	Salience(t) S0(t,m), but that gives bad fit]
+    where: S0(t,m) = U(m | [[t]]^{-1})
+
+  R2(t,m ; lambda, epislon) \propto Salience(t) S1(m ,t ; lambda , epsilon) 
+
+############## 
+RSA_speaker_mixed_E10.*
+3 speaker types: S0, S1, S2 [how exactly?]
+	
+  S0(t,m) = U(m | [[t]]^{-1})
+
+  S1(m ,t ; lambda , epsilon) \propto S1'(m ,t ; lambda) + epsilon
+    where: S1'(m ,t ; lambda) \propto exp( \lambda log(R0(t,m)))
+
+  S2(m ,t ; lambda , epsilon) \propto S2'(m ,t ; lambda) + epsilon
+    where: S2'(m ,t ; lambda) \propto exp( \lambda log(R1(t,m)))

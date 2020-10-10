@@ -1,0 +1,164 @@
+---
+output: pdf_document
+---
+How to determine the salience priors?
+=====================================
+
+```{r warning= FALSE, echo = FALSE, message = FALSE}
+require('plyr')
+```
+
+
+Load data.
+
+```{r, warnings = FALSE, message = FALSE}
+
+comp = read.csv("data/comprehension_E10.csv", sep = "\t")
+prod = read.csv("data/production_E10.csv", sep = "\t")
+prior = read.csv("data/prior_E10.csv", sep = "\t")
+
+```
+
+There are 156 "grids", i.e., sequences of pictures used. These are already accessible in the dataframe "priors" under variable "combination", but not yet in dataframe "comp". Let's introduce a uniform labelling and speak of "grids" and include the information about which grid is used in "comp" and "prior" alike.
+
+
+```{r}
+
+grid = sapply(1:nrow(comp), function(x) paste(comp[x,]$img1, comp[x,]$img2, comp[x,]$img3, sep = " ", collapse = "" ))
+gridUnique = sort(unique(unlist(grid, use.names = FALSE)))
+gridIDComp  = sapply(1:nrow(comp), function(x) which(gridUnique == grid[x])[1] )
+gridIDPrior = sapply(1:nrow(prior), function(x) which(gridUnique == prior[x,]$combination)[1] )
+
+comp$grid = factor(grid)
+comp$gridID = factor(gridIDComp)
+
+prior$grid = factor(prior$combination)
+prior$gridID = factor(gridIDPrior)
+
+```
+
+We would like to determine a salience prior for each "game". We can define what counts as a "game" at various levels of granularity. The most coarse-grained analysis differentiates only "simple", "complex", "ambiguous" and "unabmiguous" conditions. The most fine-grained analysis would treat every grid as a different game. Since the former is the level of granularity that we used so far, let's first stick to the most coarse-grained notion of a "game".
+
+What are the priors for each of the four types of games: "simple", "complex", "ambiguous" and "unabmiguous"?
+
+Unfortunately, there is no one-to-one correspondence between grids and games. Some grids are only used in "amb" and "unamb", but all grids used in "simple" and "complex" are also used in "unamb". In fact, the latter mentioned grids appear to be used the exact same number of times in either condition. [Is this correct? Does this matter even?]
+
+We should therefore assign to each game the set of grids that occur in that condition. We should then calculate the priors for each game by weighing in how often the respective grids appeared in the comprehension experiment. [*Notice that this means that we should use a different salience prior for the production data, if we ever wanted to include one in the modeling there!*]
+
+```{r}
+
+priorGrids =  ddply(prior, .(gridID), summarise, 
+                    img1 = sum(imagelocation == 1) / length(response),
+                    img2 = sum(imagelocation == 2) / length(response),
+                    img3 = sum(imagelocation == 3) / length(response),
+                    total = length(response))
+
+impTypeFreq = table(comp$gridID,comp$redimptype)
+
+dummyZero = rep(0, length(gridUnique))
+
+gridInfo = data.frame(grid = gridUnique,
+                      gridID = 1:length(gridUnique),
+                      simple = impTypeFreq[,"simple"],
+                      complex = impTypeFreq[,"complex"],
+                      ambiguous = impTypeFreq[,"ambiguous"],
+                      unambiguous = impTypeFreq[,"unambiguous"],
+                      simple_target = dummyZero,
+                      simple_competitor = dummyZero,
+                      simple_distractor = dummyZero,
+                      complex_target = dummyZero,
+                      complex_competitor = dummyZero,
+                      complex_distractor = dummyZero,
+                      prior_target = dummyZero,
+                      prior_competitor = dummyZero,
+                      prior_distractor = dummyZero,
+                      prior_target2 = dummyZero,
+                      prior_competitor2 = dummyZero,
+                      prior_distractor2 = dummyZero
+                      )
+
+for (x in 1:length(gridUnique)) {
+  dsub = subset(comp, grid == gridUnique[x])
+  if ("simple" %in% dsub$redimptype) {
+    dsubsub = subset(dsub, redimptype == "simple")
+    gridInfo$simple_target[x] = dsubsub$pos_target[1]
+    gridInfo$simple_competitor[x] = dsubsub$pos_competitor[1]
+    gridInfo$simple_distractor[x] = dsubsub$pos_distractor[1]
+    gridInfo$prior_target[x] = priorGrids[x,(dsubsub$pos_target[1]+1)]
+    gridInfo$prior_competitor[x] = priorGrids[x,(dsubsub$pos_competitor[1]+1)]
+    gridInfo$prior_distractor[x] = priorGrids[x,(dsubsub$pos_distractor[1]+1)]
+  }
+  if ("complex" %in% dsub$redimptype) {
+    dsubsub = subset(dsub, redimptype == "complex")
+    gridInfo$complex_target[x] = dsubsub$pos_target[1]
+    gridInfo$complex_competitor[x] = dsubsub$pos_competitor[1]
+    gridInfo$complex_distractor[x] = dsubsub$pos_distractor[1]
+    gridInfo$prior_target[x] = priorGrids[x,(dsubsub$pos_target[1]+1)]
+    gridInfo$prior_competitor[x] = priorGrids[x,(dsubsub$pos_competitor[1]+1)]
+    gridInfo$prior_distractor[x] = priorGrids[x,(dsubsub$pos_distractor[1]+1)]
+  }
+  if ("ambiguous" %in% dsub$redimptype) {
+    dsubsub = subset(dsub, redimptype == "ambiguous")
+    gridInfo$ambiguous_target1[x] = unique(dsubsub$pos_target)[1]
+    gridInfo$ambiguous_target2[x] = unique(dsubsub$pos_target)[2]
+    gridInfo$ambiguous_competitor1[x] = unique(dsubsub$pos_competitor)[1]
+    gridInfo$ambiguous_competitor2[x] = unique(dsubsub$pos_competitor)[2]
+    gridInfo$ambiguous_distractor[x] = dsubsub$pos_distractor[1]
+    gridInfo$prior_target2[x] = (priorGrids[x,(gridInfo$ambiguous_target1[x]+1)] * 
+                                  sum(dsubsub$pos_target == gridInfo$ambiguous_target1[x]) + 
+                               priorGrids[x,(gridInfo$ambiguous_target2[x]+1)] * 
+                                 sum(dsubsub$pos_target == gridInfo$ambiguous_target2[x]) ) / 
+                                      length(dsubsub)
+    gridInfo$prior_competitor2[x] = (priorGrids[x,(gridInfo$ambiguous_competitor1[x]+1)] * 
+                                      sum(dsubsub$pos_competitor == gridInfo$ambiguous_competitor1[x]) + 
+                                    priorGrids[x,(gridInfo$ambiguous_competitor2[x]+1)] * 
+                                      sum(dsubsub$pos_competitor == gridInfo$ambiguous_competitor2[x]) ) /
+                                          length(dsubsub)
+    gridInfo$prior_distractor2[x] = priorGrids[x,(gridInfo$ambiguous_distractor[x]+1)]
+  }
+  if ("unambiguous" %in% dsub$redimptype) {
+    dsubsub = subset(dsub, redimptype == "unambiguous")
+    gridInfo$unambiguous_target1[x] = unique(dsubsub$pos_target)[1]
+    gridInfo$unambiguous_target2[x] = unique(dsubsub$pos_target)[length(unique(dsubsub$pos_target))]
+    gridInfo$unambiguous_competitor1[x] = unique(dsubsub$pos_competitor)[1]
+    gridInfo$unambiguous_competitor2[x] = unique(dsubsub$pos_competitor)[length(unique(dsubsub$pos_competitor))]
+    gridInfo$unambiguous_distractor[x] = dsubsub$pos_distractor[1]
+    gridInfo$prior_target2[x] = (priorGrids[x,(gridInfo$unambiguous_target1[x]+1)] * 
+                                  sum(dsubsub$pos_target == gridInfo$unambiguous_target1[x]) + 
+                               priorGrids[x,(gridInfo$unambiguous_target2[x]+1)] * 
+                                 sum(dsubsub$pos_target == gridInfo$unambiguous_target2[x]) ) /
+                                       length(dsubsub)
+    gridInfo$prior_competitor2[x] = (priorGrids[x,(gridInfo$unambiguous_competitor1[x]+1)] * 
+                                      sum(dsubsub$pos_competitor == gridInfo$unambiguous_competitor1[x]) + 
+                                    priorGrids[x,(gridInfo$unambiguous_competitor2[x]+1)] * 
+                                    sum(dsubsub$pos_competitor == gridInfo$unambiguous_competitor2[x]) ) /
+                                       length(dsubsub)
+    gridInfo$prior_distractor2[x] = priorGrids[x,(gridInfo$unambiguous_distractor[x]+1)]
+  }
+}
+
+salience = matrix(0, nrow = 4, ncol = 3)
+rownames(salience) = c("simple", "complex", "unambiguous", "ambiguous")
+colnames(salience) = c("target", "competitor", "distractor")
+
+salience["simple",] = c( sum(gridInfo$simple * gridInfo$prior_target) ,
+                         sum(gridInfo$simple * gridInfo$prior_competitor) ,
+                         sum(gridInfo$simple * gridInfo$prior_distractor) ) / sum(gridInfo$simple)
+salience["complex",] = c( sum(gridInfo$complex * gridInfo$prior_target) ,
+                          sum(gridInfo$complex * gridInfo$prior_competitor) ,
+                          sum(gridInfo$complex * gridInfo$prior_distractor) ) / sum(gridInfo$simple)
+salience["ambiguous",] = c( sum(gridInfo$ambiguous * gridInfo$prior_target2) ,
+                            sum(gridInfo$ambiguous * gridInfo$prior_competitor2) ,
+                            sum(gridInfo$ambiguous * gridInfo$prior_distractor2) ) / sum(gridInfo$ambiguous)
+salience["unambiguous",] = c( sum(gridInfo$unambiguous * gridInfo$prior_target2) ,
+                              sum(gridInfo$unambiguous * gridInfo$prior_competitor2) ,
+                              sum(gridInfo$unambiguous * gridInfo$prior_distractor2) ) / sum(gridInfo$unambiguous)
+
+
+show(salience)
+salience_E10 = salience
+# save(salience_E10, file = "data/salience_E10.Rdata")
+```
+
+
+
